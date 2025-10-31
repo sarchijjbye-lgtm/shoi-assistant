@@ -1,36 +1,39 @@
 import os
-TOKEN = os.getenv("TOKEN")
+import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-import asyncio
-import os
-from flask import Flask
-from threading import Thread
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from flask import Flask, request
 
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "SHOI Assistant is alive 💧"
-
-def run():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
-
+# === Конфигурация ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_HOST = "https://shoi-assistant.onrender.com"  # ← твой Render URL
+WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
+WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable is not set. Please add your Telegram bot token from BotFather.")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+app = Flask(__name__)
 
+# === Словарь для ответов ===
 user_data = {}
 
+# === Маршрут Flask (главная страница для Render проверки) ===
+@app.route('/')
+def home():
+    return "💧 SHOI Assistant is alive and serving webhook requests."
+
+# === Основной webhook endpoint ===
+@app.route(WEBHOOK_PATH, methods=["POST"])
+async def webhook():
+    update = types.Update(**request.json)
+    await dp.feed_update(bot, update)
+    return {"ok": True}
+
+# === Вопросы ===
 @dp.message(Command("start"))
 async def start(message: types.Message):
     kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
@@ -121,121 +124,49 @@ async def show_result(message: types.Message):
     answers = " ".join(user_data[message.from_user.id].values()).lower()
 
     oils = {
-        "flax": {
-            "name": "💧 Льняное масло SHOI",
-            "why": "Поддерживает сердце, сосуды и мозг. Источник Омега-3 и антиоксидантов.",
-            "how": "Принимайте по 1 ч.л. утром натощак или добавляйте в салаты."
-        },
-        "hemp": {
-            "name": "🌿 Конопляное масло SHOI",
-            "why": "Баланс Омега-3 и Омега-6, помогает при стрессе, тревоге и воспалениях.",
-            "how": "1 ч.л. утром, курсом 1–2 месяца."
-        },
-        "pumpkin": {
-            "name": "🎃 Тыквенное масло SHOI",
-            "why": "Поддерживает печень, ЖКТ и мужское здоровье, богато цинком и магнием.",
-            "how": "1 ч.л. 2 раза в день до еды."
-        },
-        "blackseed": {
-            "name": "🌑 Масло чёрного тмина SHOI",
-            "why": "Укрепляет иммунитет, снижает воспаления, помогает при простудах и аллергии.",
-            "how": "0.5–1 ч.л. после еды, курсом 30 дней."
-        },
-        "coconut": {
-            "name": "🥥 Кокосовое масло SHOI",
-            "why": "Источник быстрой энергии, улучшает иммунитет и состояние кожи и волос.",
-            "how": "Можно добавлять в кашу, кофе или использовать наружно."
-        },
-        "sunflower": {
-            "name": "🌻 Подсолнечное масло SHOI",
-            "why": "Богато витамином E, улучшает кожу и обмен веществ.",
-            "how": "1 ч.л. в день в составе салатов."
-        },
-        "walnut": {
-            "name": "🌰 Масло грецкого ореха SHOI",
-            "why": "Поддерживает концентрацию, память и работу сердца.",
-            "how": "1 ч.л. утром перед едой."
-        }
+        "flax": {"name": "💧 Льняное масло SHOI", "why": "Поддерживает сердце, сосуды и мозг. Источник Омега-3.", "how": "1 ч.л. утром натощак."},
+        "hemp": {"name": "🌿 Конопляное масло SHOI", "why": "Баланс Омега-3 и Омега-6, помогает при стрессе.", "how": "1 ч.л. утром курсом 1–2 месяца."},
+        "pumpkin": {"name": "🎃 Тыквенное масло SHOI", "why": "Поддерживает печень и ЖКТ, богато цинком.", "how": "1 ч.л. 2 раза в день до еды."},
+        "blackseed": {"name": "🌑 Масло чёрного тмина SHOI", "why": "Укрепляет иммунитет, снижает воспаления.", "how": "0.5–1 ч.л. после еды курсом 30 дней."},
+        "coconut": {"name": "🥥 Кокосовое масло SHOI", "why": "Источник энергии, улучшает кожу и волосы.", "how": "Добавляйте в кашу или кофе, можно наружно."},
+        "sunflower": {"name": "🌻 Подсолнечное масло SHOI", "why": "Богато витамином E, улучшает кожу.", "how": "1 ч.л. в день в составе салатов."},
+        "walnut": {"name": "🌰 Масло грецкого ореха SHOI", "why": "Поддерживает концентрацию и память.", "how": "1 ч.л. утром перед едой."}
     }
-    
-    score = {k: 0 for k in oils.keys()}
 
-    if "иммун" in answers:
-        score["blackseed"] += 3
-    if "жкт" in answers or "печен" in answers or "пищеварен" in answers:
-        score["pumpkin"] += 3
-    if "кожа" in answers or "волос" in answers or "сухая" in answers:
-        score["sunflower"] += 3
-        score["coconut"] += 1
-    if "стресс" in answers or "тревож" in answers:
-        score["hemp"] += 3
-    if "мозг" in answers or "концентра" in answers:
-        score["walnut"] += 3
-    if "сердце" in answers or "сосуд" in answers:
-        score["flax"] += 3
-    if "энерг" in answers or "актив" in answers:
-        score["coconut"] += 3
-    if "гормональн" in answers:
-        score["pumpkin"] += 2
-        score["hemp"] += 2
-    if "устаю" in answers or "усталь" in answers:
-        score["coconut"] += 2
-        score["walnut"] += 1
-    if "болею" in answers:
-        score["blackseed"] += 3
-    if "сидяч" in answers:
-        score["flax"] += 2
-        score["walnut"] += 1
-    if "спокойн" in answers:
-        score["sunflower"] += 1
-        score["walnut"] += 1
-    if "нейтральн" in answers:
-        score["sunflower"] += 1
-        score["coconut"] += 1
-    if "орехов" in answers:
-        score["walnut"] += 2
-    if "пряный" in answers:
-        score["blackseed"] += 1
-        score["pumpkin"] += 1
-    if "универсальн" in answers:
-        score["coconut"] += 2
-    if "мясо" in answers or "рыба" in answers:
-        score["flax"] += 1
-    if "овощи" in answers or "крупы" in answers:
-        score["sunflower"] += 1
-    if "фастфуд" in answers or "сладкое" in answers:
-        score["pumpkin"] += 2
-        score["hemp"] += 1
-    if "почти не ем" in answers or "животные продукты" in answers:
-        score["flax"] += 2
-        score["walnut"] += 1
+    score = {k: 0 for k in oils.keys()}
+    if "иммун" in answers: score["blackseed"] += 3
+    if "жкт" in answers or "печен" in answers: score["pumpkin"] += 3
+    if "кожа" in answers: score["sunflower"] += 3
+    if "стресс" in answers: score["hemp"] += 3
+    if "мозг" in answers: score["walnut"] += 3
+    if "сердце" in answers: score["flax"] += 3
+    if "энерг" in answers: score["coconut"] += 3
 
     best = max(score, key=lambda k: score[k])
     rec = oils[best]
+    restart_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[[KeyboardButton(text="🔄 Пройти опрос заново")]])
 
-    restart_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
-        [KeyboardButton(text="🔄 Пройти опрос заново")]
-    ])
-    
     await message.answer(
         f"✨ Мы подобрали масло именно для вас!\n\n"
         f"<b>{rec['name']}</b>\n\n"
         f"🔹 Почему оно вам подходит: {rec['why']}\n"
         f"💡 Как принимать: {rec['how']}\n\n"
-        f"📊 9 из 10 клиентов SHOI отмечают улучшение самочувствия уже через 7 дней.\n\n"
-        f"💬 Хотите заказать или получить персональную консультацию?\n"
-        f"<a href='https://wa.me/message/3NNTHAAA6GFMH1'>Напишите в WhatsApp — помогу оформить заказ прямо сейчас.</a>\n\n"
-        f"💡 <i>Хотите подобрать другое масло? Нажмите кнопку ниже.</i>",
+        f"<a href='https://wa.me/message/3NNTHAAA6GFMH1'>Написать в WhatsApp для заказа</a>",
         parse_mode="HTML",
         disable_web_page_preview=True,
         reply_markup=restart_kb
     )
 
-async def main():
-    print("🤖 SHOI-ассистент запущен и готов к работе!")
-    print("💬 Отправьте /start боту в Telegram для начала работы")
-    await dp.start_polling(bot)
+# === Запуск ===
+async def on_startup():
+    await bot.delete_webhook()
+    await bot.set_webhook(WEBHOOK_URL)
+    print("💧 SHOI Assistant запущен через Webhook и готов принимать запросы!")
+
+def run_flask():
+    app.run(host="0.0.0.0", port=8080)
 
 if __name__ == "__main__":
-    keep_alive()
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.create_task(on_startup())
+    run_flask()
