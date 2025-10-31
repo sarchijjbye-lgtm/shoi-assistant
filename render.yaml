@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: shoi-assistant
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python3 main.py"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.8
