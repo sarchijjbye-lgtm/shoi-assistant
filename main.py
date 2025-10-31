@@ -4,10 +4,11 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from flask import Flask, request
+from threading import Thread
 
 # === Конфигурация ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_HOST = "https://shoi-assistant.onrender.com"  # ← твой Render URL
+WEBHOOK_HOST = "https://shoi-assistant.onrender.com"  # твой Render URL
 WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
@@ -18,7 +19,6 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 app = Flask(__name__)
 
-# === Словарь для ответов ===
 user_data = {}
 
 # === Главная страница (Render проверяет, что сервер жив) ===
@@ -26,11 +26,11 @@ user_data = {}
 def home():
     return "💧 SHOI Assistant is alive and webhook is active."
 
-# === Основной webhook endpoint ===
+# === Webhook endpoint ===
 @app.route(WEBHOOK_PATH, methods=["POST"])
 def webhook():
     update = types.Update(**request.json)
-    asyncio.run(dp.feed_update(bot, update))
+    asyncio.run_coroutine_threadsafe(dp.feed_update(bot, update), dp.loop)
     return {"ok": True}
 
 # === Вопросы ===
@@ -157,16 +157,20 @@ async def show_result(message: types.Message):
         reply_markup=restart_kb
     )
 
-# === Настройка webhook при запуске ===
+# === Запуск ===
 async def on_startup():
     await bot.delete_webhook()
     await bot.set_webhook(WEBHOOK_URL)
     print("💧 SHOI Assistant webhook установлен успешно!")
 
-def start_webhook():
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(on_startup())
+def start_bot():
+    asyncio.run(on_startup())
+    dp.loop = asyncio.get_event_loop()
+    dp.loop.create_task(dp.start_polling(bot))
+
+def run_flask():
     app.run(host="0.0.0.0", port=8080)
 
 if __name__ == "__main__":
-    start_webhook()
+    Thread(target=start_bot).start()
+    run_flask()
