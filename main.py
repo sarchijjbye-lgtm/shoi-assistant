@@ -1,50 +1,57 @@
 import os
 import asyncio
+import threading
+from flask import Flask, request
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from flask import Flask, request
-from threading import Thread
 
 # === Конфигурация ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_HOST = "https://shoi-assistant.onrender.com"  # твой Render URL
+WEBHOOK_HOST = "https://shoi-assistant.onrender.com"  # URL Render
 WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN environment variable is not set. Please add your Telegram bot token from BotFather.")
+    raise ValueError("BOT_TOKEN environment variable is not set.")
 
+# === Инициализация бота и Flask ===
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 app = Flask(__name__)
 
+# Главный event loop для aiogram
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
 user_data = {}
 
-# === Главная страница (Render проверяет, что сервер жив) ===
-@app.route('/')
+@app.route("/")
 def home():
-    return "💧 SHOI Assistant is alive and webhook is active."
+    return "💧 SHOI Assistant is alive and running."
 
-# === Webhook endpoint ===
 @app.route(WEBHOOK_PATH, methods=["POST"])
-def webhook():
+def receive_update():
+    """
+    Flask вызывает этот endpoint при каждом новом апдейте Telegram.
+    Мы просто отправляем update в event loop aiogram.
+    """
     update = types.Update(**request.json)
-    asyncio.run_coroutine_threadsafe(dp.feed_update(bot, update), dp.loop)
+    asyncio.run_coroutine_threadsafe(dp.feed_update(bot, update), loop)
     return {"ok": True}
 
-# === Вопросы ===
+
+# === Логика бота ===
 @dp.message(Command("start"))
 async def start(message: types.Message):
-    kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
-        [KeyboardButton(text="Начать подбор масла")]
-    ])
+    kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[[KeyboardButton(text="Начать подбор масла")]])
     await message.answer(
         "Здравствуйте! 💧\nЯ SHOI-ассистент.\n"
         "Помогу подобрать масло холодного отжима, которое лучше всего подойдёт именно вам.\n\n"
         "Нажмите «Начать подбор масла».",
         reply_markup=kb
     )
+
 
 @dp.message(lambda m: m.text in ["Начать подбор масла", "🔄 Пройти опрос заново"])
 async def question_1(message: types.Message):
@@ -59,6 +66,7 @@ async def question_1(message: types.Message):
         [KeyboardButton(text="Гормональный баланс")]
     ])
     await message.answer("1️⃣ Что для вас сейчас важнее всего?", reply_markup=kb)
+
 
 @dp.message(lambda m: m.text in [
     "Иммунитет и защита", "ЖКТ и печень", "Кожа и волосы",
@@ -76,6 +84,7 @@ async def question_2(message: types.Message):
     ])
     await message.answer("2️⃣ Что вы чаще всего чувствуете?", reply_markup=kb)
 
+
 @dp.message(lambda m: m.text in [
     "Часто устаю", "Есть проблемы с пищеварением", "Сухая кожа",
     "Тревожность и стресс", "Часто болею", "Хочу больше энергии"
@@ -90,6 +99,7 @@ async def question_3(message: types.Message):
     ])
     await message.answer("3️⃣ Как вы питаетесь чаще всего?", reply_markup=kb)
 
+
 @dp.message(lambda m: m.text in [
     "Мясо, рыба, яйца", "Овощи и крупы", "Фастфуд и сладкое", "Почти не ем животные продукты"
 ])
@@ -103,6 +113,7 @@ async def question_4(message: types.Message):
     ])
     await message.answer("4️⃣ Какой у вас образ жизни?", reply_markup=kb)
 
+
 @dp.message(lambda m: m.text in [
     "Активный образ жизни", "Сидячая работа", "Постоянный стресс", "Спокойный ритм"
 ])
@@ -115,6 +126,7 @@ async def question_5(message: types.Message):
         [KeyboardButton(text="Универсальность — внутрь и для ухода")]
     ])
     await message.answer("5️⃣ Что вам важнее в вкусе и применении масла?", reply_markup=kb)
+
 
 @dp.message(lambda m: m.text in [
     "Нейтральный вкус", "Ореховый вкус", "Пряный вкус", "Универсальность — внутрь и для ухода"
@@ -157,20 +169,19 @@ async def show_result(message: types.Message):
         reply_markup=restart_kb
     )
 
-# === Запуск ===
+
+# === Инициализация webhook и фонового потока ===
 async def on_startup():
     await bot.delete_webhook()
     await bot.set_webhook(WEBHOOK_URL)
     print("💧 SHOI Assistant webhook установлен успешно!")
 
 def start_bot():
-    asyncio.run(on_startup())
-    dp.loop = asyncio.get_event_loop()
-    dp.loop.create_task(dp.start_polling(bot))
-
-def run_flask():
-    app.run(host="0.0.0.0", port=8080)
+    loop.run_until_complete(on_startup())
+    loop.run_forever()
 
 if __name__ == "__main__":
-    Thread(target=start_bot).start()
-    run_flask()
+    # Запускаем бота в фоне
+    threading.Thread(target=start_bot, daemon=True).start()
+    # Запускаем Flask-сервер
+    app.run(host="0.0.0.0", port=8080)
