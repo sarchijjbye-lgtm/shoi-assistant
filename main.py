@@ -21,16 +21,16 @@ app = Flask(__name__)
 # === Словарь для ответов ===
 user_data = {}
 
-# === Маршрут Flask (главная страница для Render проверки) ===
+# === Главная страница (Render проверяет, что сервер жив) ===
 @app.route('/')
 def home():
-    return "💧 SHOI Assistant is alive and serving webhook requests."
+    return "💧 SHOI Assistant is alive and webhook is active."
 
 # === Основной webhook endpoint ===
 @app.route(WEBHOOK_PATH, methods=["POST"])
-async def webhook():
+def webhook():
     update = types.Update(**request.json)
-    await dp.feed_update(bot, update)
+    asyncio.run(dp.feed_update(bot, update))
     return {"ok": True}
 
 # === Вопросы ===
@@ -157,16 +157,16 @@ async def show_result(message: types.Message):
         reply_markup=restart_kb
     )
 
-# === Запуск ===
+# === Настройка webhook при запуске ===
 async def on_startup():
     await bot.delete_webhook()
     await bot.set_webhook(WEBHOOK_URL)
-    print("💧 SHOI Assistant запущен через Webhook и готов принимать запросы!")
+    print("💧 SHOI Assistant webhook установлен успешно!")
 
-def run_flask():
+def start_webhook():
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(on_startup())
     app.run(host="0.0.0.0", port=8080)
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(on_startup())
-    run_flask()
+    start_webhook()
