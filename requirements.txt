@@ -1,6 +1,6 @@
 Flask==3.0.3
 aiogram==2.25.2
-aiohttp==3.9.5
+aiohttp==3.8.6
 redis==5.0.7
 python-dotenv==1.0.1
 gspread==6.0.2
